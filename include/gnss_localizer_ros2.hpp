@@ -29,8 +29,6 @@ public:
 
     sub_navSatFix = this->create_subscription<sensor_msgs::msg::NavSatFix>("PoSLV/navfix",10,
         [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg){this->navSatFix_callback(msg);});
-
-    pub_global_pose = this->create_publisher<nav_msgs::msg::Odometry>("global_odom_pose",10);
     pub_pose = this->create_publisher<geometry_msgs::msg::PoseStamped>("global_pose",10);
     pub_gnss_stat = this->create_publisher<std_msgs::msg::Bool>("gnss_stat",10);
 
@@ -111,11 +109,9 @@ private:
 
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr sub_navSatFix;
 
-  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_global_pose;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_gnss_stat;
 
-  nav_msgs::msg::Odometry odom;
   sensor_msgs::msg::NavSatFix fix;
   geometry_msgs::msg::PoseStamped _prev_pose;
   geometry_msgs::msg::Quaternion _quat;
