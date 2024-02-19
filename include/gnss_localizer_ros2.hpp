@@ -51,8 +51,6 @@ private:
     geo.llh_to_xyz(msg->latitude, msg->longitude, msg->altitude);
 
 
-    // static tf::TransformBroadcaster pose_broadcaster;
-    // tf::Transform pose_transform;
     tf2::Quaternion pose_q;
 
     geometry_msgs::msg::PoseStamped pose;
@@ -75,12 +73,10 @@ private:
 
     double distance = sqrt(pow(pose.pose.position.y - _prev_pose.pose.position.y, 2) +
                           pow(pose.pose.position.x - _prev_pose.pose.position.x, 2));
-    std::cout << "distance : " << distance << std::endl;
 
     if (distance > 0.2)
     {
       yaw = atan2(pose.pose.position.y - _prev_pose.pose.position.y, pose.pose.position.x - _prev_pose.pose.position.x);
-      // _quat = tf::createQuaternionMsgFromYaw(yaw);
       tf2::Quaternion q_temp;
       q_temp.setRPY(0,0,yaw);
       _quat = tf2::toMsg(q_temp);
@@ -95,13 +91,8 @@ private:
       pub_gnss_stat->publish(gnss_stat);
 
       // static tf::TransformBroadcaster br;
-      // tf2::Transform transform;
       tf2::Quaternion q;
-      // transform.setOrigin(tf2::Vector3(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z));
       q.setRPY(0, 0, yaw);
-      // transform.setRotation(q);
-      // br.sendTransform(tf::StampedTransform(transform, msg->header.stamp, "map", "gps"));
-      // tf_broadcaster_->sendTransform(tf2::StampedTransform(transform, msg->header.stamp, "map", "gps"));
       transformStamped.header.stamp = now;
       transformStamped.header.frame_id = "map";
       transformStamped.child_frame_id = "gnss";
@@ -124,7 +115,6 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_gnss_stat;
 
-  // sensor_msgs::msg::JointState joint_state;
   nav_msgs::msg::Odometry odom;
   sensor_msgs::msg::NavSatFix fix;
   geometry_msgs::msg::PoseStamped _prev_pose;
@@ -132,7 +122,7 @@ private:
   geometry_msgs::msg::TransformStamped transformStamped;
   std_msgs::msg::Bool gnss_stat;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-  // geometry_msgs::msg::TransformStamped transformStamped;
+
   int plane;
   double yaw;
   bool _orientation_ready;
