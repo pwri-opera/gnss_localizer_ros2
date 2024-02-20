@@ -92,7 +92,7 @@ private:
       tf2::Quaternion q;
       q.setRPY(0, 0, yaw);
       transformStamped.header.stamp = now;
-      transformStamped.header.frame_id = "map";
+      transformStamped.header.frame_id = "world";
       transformStamped.child_frame_id = "gnss";
       transformStamped.transform.translation.x = pose.pose.position.x;
       transformStamped.transform.translation.y = pose.pose.position.y;
