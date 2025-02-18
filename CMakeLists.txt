@@ -39,12 +39,10 @@ ament_target_dependencies(gnss_localizer_ros2
   tf2
 )
 
-
 install(TARGETS 
   gnss_localizer_ros2
   DESTINATION lib/${PROJECT_NAME}
 )
-
 
 install(
   DIRECTORY launch

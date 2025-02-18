@@ -16,6 +16,10 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <tf2/exceptions.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+
 #include "geo_pos_conv.hpp"
 
 #define initial_interval 100 //[ms]
@@ -37,33 +41,57 @@ public:
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   };
+
   ~gnss_localizer_ros2()
   {
   }
 
+
 private:
+
+  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr  sub_navSatFix;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr        sub_ahrs;
+
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr             pub_gnss_stat;
+
+  std_msgs::msg::Bool                   gnss_stat;
+  sensor_msgs::msg::NavSatFix           fix;
+  geometry_msgs::msg::PoseStamped       _prev_pose;
+  geometry_msgs::msg::Quaternion        _quat;
+  geometry_msgs::msg::TransformStamped  ts_gnss;
+
+  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+  std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
+  int plane;
+  double yaw;
+  bool _orientation_ready;
+
   void navSatFix_callback(const sensor_msgs::msg::NavSatFix::SharedPtr &msg)
   {
-    rclcpp::Time now = this->get_clock()->now();
+    rclcpp::Time time_now = this->get_clock()->now();
 
     geo_pos_conv geo;
     geo.set_plane(plane);
     geo.llh_to_xyz(msg->latitude, msg->longitude, msg->altitude);
 
-
-    tf2::Quaternion pose_q;
-
-    geometry_msgs::msg::PoseStamped pose;
-    pose.header = msg->header;
-    pose.header.stamp = now;
-    pose.header.frame_id = "world";
-    pose.pose.position.x = geo.y();
-    pose.pose.position.y = geo.x();
-    pose.pose.position.z = geo.z();
+    geometry_msgs::msg::PoseStamped gnss_pose;
+    gnss_pose.header        = msg->header;
+    gnss_pose.header.stamp  = time_now;
+    gnss_pose.header.frame_id = "map";
+    gnss_pose.pose.position.x = geo.y();
+    gnss_pose.pose.position.y = geo.x();
+    // gnss_pose.pose.position.z = geo.z();
+    gnss_pose.pose.position.z = 0.0;
 
     // set gnss_stat
-    if (pose.pose.position.x == 0.0 || pose.pose.position.y == 0.0 || pose.pose.position.z == 0.0)
+    if (gnss_pose.pose.position.x == 0.0 || gnss_pose.pose.position.y == 0.0 || gnss_pose.pose.position.z == 0.0)
     {
       gnss_stat.data = false;
     }
@@ -87,27 +115,49 @@ private:
 
     if (_orientation_ready)
     {
-      pose.pose.orientation = _quat;
-      pub_pose->publish(pose);
-      pub_gnss_stat->publish(gnss_stat);
+      gnss_pose.pose.orientation = _quat;
 
-      // static tf::TransformBroadcaster br;
-      tf2::Quaternion q;
-      q.setRPY(0, 0, yaw);
-      transformStamped.header.stamp = now;
-      transformStamped.header.frame_id = "world";
-      transformStamped.child_frame_id = "gnss";
-      transformStamped.transform.translation.x = pose.pose.position.x;
-      transformStamped.transform.translation.y = pose.pose.position.y;
-      transformStamped.transform.translation.z = pose.pose.position.z;
-      // transformStamped.transform.rotation.w = q.w();
-      // transformStamped.transform.rotation.x = q.x();
-      // transformStamped.transform.rotation.y = q.y();
-      // transformStamped.transform.rotation.z = q.z();
-      transformStamped.transform.rotation = _quat;
+      ts_gnss.header.stamp      = time_now;
+      ts_gnss.header.frame_id   = "map"; //world
+      ts_gnss.child_frame_id    = "gnss_temp_link";   //gnss
+      ts_gnss.transform.translation.x = gnss_pose.pose.position.x;
+      ts_gnss.transform.translation.y = gnss_pose.pose.position.y;
+      ts_gnss.transform.translation.z = gnss_pose.pose.position.z;
+      ts_gnss.transform.rotation      = _quat;
 
-      tf_broadcaster_->sendTransform(transformStamped);
+      // tf_broadcaster_->sendTransform(transformStamped);
+
+      try
+      {
+        geometry_msgs::msg::PoseStamped       gnss_base_link_pose;
+        geometry_msgs::msg::TransformStamped  trans_gnss_to_base_link 
+          = tf_buffer_->lookupTransform ( "base_link", "gnss_temp_link", tf2::TimePointZero );
+        tf2::doTransform (gnss_pose, gnss_base_link_pose, trans_gnss_to_base_link);
+        gnss_base_link_pose.header.frame_id = "map";
+
+        // `map -> base_link` のTFメッセージを作成
+        geometry_msgs::msg::TransformStamped transform_stamped;
+        transform_stamped.header.stamp    = time_now;
+        transform_stamped.header.frame_id = "map";
+        transform_stamped.child_frame_id  = "base_link";
+
+        transform_stamped.transform.translation.x = gnss_base_link_pose.pose.position.x;
+        transform_stamped.transform.translation.y = gnss_base_link_pose.pose.position.y;
+        transform_stamped.transform.translation.z = gnss_base_link_pose.pose.position.z;
+
+        transform_stamped.transform.rotation = gnss_base_link_pose.pose.orientation;
+        pub_pose->publish (gnss_base_link_pose);
+        pub_gnss_stat->publish (gnss_stat);
+
+        // `tf2` で `map -> base_link` の変換をブロードキャスト
+        tf_broadcaster_->sendTransform(transform_stamped);
+      }
+      catch (const tf2::TransformException &ex)
+      {
+          RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", ex.what());
+      }
     }
+
   }
 
   void arhs_callback(const sensor_msgs::msg::Imu::SharedPtr &msg)
@@ -115,23 +165,4 @@ private:
     _quat = msg->orientation;
     _orientation_ready = true;
   }
-
-
-  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr sub_navSatFix;
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_ahrs;
-
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_gnss_stat;
-
-  sensor_msgs::msg::NavSatFix fix;
-  geometry_msgs::msg::PoseStamped _prev_pose;
-  geometry_msgs::msg::Quaternion _quat;
-  geometry_msgs::msg::TransformStamped transformStamped;
-  std_msgs::msg::Bool gnss_stat;
-  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-
-  int plane;
-  double yaw;
-
-  bool _orientation_ready;
 };
