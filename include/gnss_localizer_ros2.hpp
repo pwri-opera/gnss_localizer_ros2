@@ -9,6 +9,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <nav_msgs/msg/path.hpp>
 
 #include <nav_msgs/msg/odometry.hpp>
 
@@ -37,12 +38,14 @@ public:
     sub_ahrs = this->create_subscription<sensor_msgs::msg::Imu>("PoSLV/ahrs",10,
         [this](const sensor_msgs::msg::Imu::SharedPtr msg){this->arhs_callback(msg);});
     pub_pose = this->create_publisher<geometry_msgs::msg::PoseStamped>("global_pose",10);
+    pub_path = this->create_publisher<nav_msgs::msg::Path>("global_pose_past",10);
     pub_gnss_stat = this->create_publisher<std_msgs::msg::Bool>("gnss_stat",10);
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
   };
 
   ~gnss_localizer_ros2()
@@ -56,6 +59,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr        sub_ahrs;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr             pub_path;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr             pub_gnss_stat;
 
   std_msgs::msg::Bool                   gnss_stat;
@@ -63,6 +67,8 @@ private:
   geometry_msgs::msg::PoseStamped       _prev_pose;
   geometry_msgs::msg::Quaternion        _quat;
   geometry_msgs::msg::TransformStamped  ts_gnss;
+
+  nav_msgs::msg::Path  past_path_;
 
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
@@ -133,6 +139,7 @@ private:
         geometry_msgs::msg::TransformStamped  trans_gnss_to_base_link 
           = tf_buffer_->lookupTransform ( "base_link", "gnss_temp_link", tf2::TimePointZero );
         tf2::doTransform (gnss_pose, gnss_base_link_pose, trans_gnss_to_base_link);
+        gnss_base_link_pose.header.stamp = time_now;
         gnss_base_link_pose.header.frame_id = "map";
 
         // `map -> base_link` のTFメッセージを作成
@@ -151,6 +158,25 @@ private:
 
         // `tf2` で `map -> base_link` の変換をブロードキャスト
         tf_broadcaster_->sendTransform(transform_stamped);
+
+
+        // Path の生成
+        past_path_.header.stamp = time_now;
+        past_path_.header.frame_id = "map";
+        past_path_.poses.push_back (gnss_base_link_pose);
+        
+        double last_sample_time =  rclcpp::Time(time_now).nanoseconds() / 1e9 - rclcpp::Time (past_path_.poses.front().header.stamp).nanoseconds() / 1e9;
+
+        std::cout << rclcpp::Time (past_path_.poses.front().header.stamp).nanoseconds() / 1e9 << std::endl;
+        std::cout <<rclcpp::Time(time_now).nanoseconds() / 1e9 << std::endl;
+        std::cout << last_sample_time << std::endl << std::endl;
+
+        if (last_sample_time > 10.0 )
+        {
+          past_path_.poses.erase(past_path_.poses.begin()); // 先頭の行を削除
+        } 
+        pub_path->publish(past_path_);
+
       }
       catch (const tf2::TransformException &ex)
       {
