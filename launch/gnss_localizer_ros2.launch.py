@@ -18,7 +18,7 @@ def generate_launch_description():
 
     declare_ns = DeclareLaunchArgument(
         "ns",
-        default_value="ic120",
+        default_value="mst110cr_2",
         description=""
     )
 
@@ -30,6 +30,11 @@ def generate_launch_description():
         namespace=ns,
         executable="gnss_localizer_ros2",
         output="screen",
+        remappings=[
+            ("PoSLV/navfix", "gnss/fix"),
+            ("PoSLV/ahrs", "gnss/imu")
+        ]
+
     )
 
 
