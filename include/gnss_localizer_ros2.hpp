@@ -96,7 +96,7 @@ private:
       q.setRPY(0, 0, yaw);
       transformStamped.header.stamp = now;
       transformStamped.header.frame_id = "world";
-      transformStamped.child_frame_id = "gnss";
+      transformStamped.child_frame_id = "gnss_world";
       transformStamped.transform.translation.x = pose.pose.position.x;
       transformStamped.transform.translation.y = pose.pose.position.y;
       transformStamped.transform.translation.z = pose.pose.position.z;
