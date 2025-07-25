@@ -32,9 +32,8 @@ def generate_launch_description():
         output="screen",
         remappings=[
             ("PoSLV/navfix", "gnss/fix"),
-            ("PoSLV/ahrs", "gnss/imu")
-        ]
-
+            ("PoSLV/ahrs", "upper/imu")
+        ],
     )
 
 
