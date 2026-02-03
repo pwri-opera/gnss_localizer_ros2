@@ -29,8 +29,13 @@
 class gnss_localizer_ros2 : public rclcpp::Node
 {
 public:
-  gnss_localizer_ros2(int _plane)
-      : rclcpp::Node("gnss_localizser"),plane(_plane),_orientation_ready(false)
+  gnss_localizer_ros2(int _plane, std::string base_link, std::string gnss_link)
+      : rclcpp::Node("gnss_localizser"),
+      plane(_plane),
+      _orientation_ready(false),
+      base_link_name(base_link),
+      gnss_link_name(gnss_link)
+
   {
 
     sub_navSatFix = this->create_subscription<sensor_msgs::msg::NavSatFix>("PoSLV/navfix",10,
@@ -74,6 +79,9 @@ private:
 
   std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
+  std::string base_link_name;
+  std::string gnss_link_name;
 
   int plane;
   double yaw;
@@ -137,7 +145,7 @@ private:
       {
         geometry_msgs::msg::PoseStamped       gnss_base_link_pose;
         geometry_msgs::msg::TransformStamped  trans_gnss_to_base_link 
-          = tf_buffer_->lookupTransform ( "base_link", "gnss_temp_link", tf2::TimePointZero );
+          = tf_buffer_->lookupTransform ( base_link_name, gnss_link_name, tf2::TimePointZero );
         tf2::doTransform (gnss_pose, gnss_base_link_pose, trans_gnss_to_base_link);
         gnss_base_link_pose.header.stamp = time_now;
         gnss_base_link_pose.header.frame_id = "map";
@@ -146,7 +154,7 @@ private:
         geometry_msgs::msg::TransformStamped transform_stamped;
         transform_stamped.header.stamp    = time_now;
         transform_stamped.header.frame_id = "map";
-        transform_stamped.child_frame_id  = "base_link";
+        transform_stamped.child_frame_id  = base_link_name;
 
         transform_stamped.transform.translation.x = gnss_base_link_pose.pose.position.x;
         transform_stamped.transform.translation.y = gnss_base_link_pose.pose.position.y;
@@ -157,7 +165,7 @@ private:
         pub_gnss_stat->publish (gnss_stat);
 
         // `tf2` で `map -> base_link` の変換をブロードキャスト
-        tf_broadcaster_->sendTransform(transform_stamped);
+        // tf_broadcaster_->sendTransform(transform_stamped);
 
 
         // Path の生成
@@ -167,9 +175,9 @@ private:
         
         double last_sample_time =  rclcpp::Time(time_now).nanoseconds() / 1e9 - rclcpp::Time (past_path_.poses.front().header.stamp).nanoseconds() / 1e9;
 
-        std::cout << rclcpp::Time (past_path_.poses.front().header.stamp).nanoseconds() / 1e9 << std::endl;
-        std::cout <<rclcpp::Time(time_now).nanoseconds() / 1e9 << std::endl;
-        std::cout << last_sample_time << std::endl << std::endl;
+        // std::cout << rclcpp::Time (past_path_.poses.front().header.stamp).nanoseconds() / 1e9 << std::endl;
+        // std::cout <<rclcpp::Time(time_now).nanoseconds() / 1e9 << std::endl;
+        // std::cout << last_sample_time << std::endl << std::endl;
 
         if (last_sample_time > 10.0 )
         {
